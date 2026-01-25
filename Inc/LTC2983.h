@@ -19,28 +19,24 @@ typedef enum{
 	TASK_STATE_STARTUP_RESET,//
 	TASK_STATE_STARTUP_WAIT_READ,//
 	TASK_STATE_STARTUP_READ,//
-	// Write Channel Assignment Data
-	TASK_STATE_WRITE_CHANNELS_ASSIGN_TRANSFER,
-	// Read Channel Assignment Data
-	TASK_STATE_READ_CHANNELS_ASSIGN_TRANSFER,
 	// Write Segment byte
 	TASK_STATE_WRITE_BYTE_TRANSFER,//
 	// Read Segment byte
 	TASK_STATE_READ_BYTE_TRANSFER,//
 	// Write Segment 4 bytes
-	TASK_STATE_WRITE_4BYTES_TRANSFER,//
+	TASK_STATE_WRITE_4BYTES_TRANSFER,
 	// Read Segment 4 bytes
-	TASK_STATE_READ_4BYTES_TRANSFER,//
+	TASK_STATE_READ_MULTIMASK_TRANSFER,
+	// Write Channel Assignment Data
+	TASK_STATE_WRITE_CHANNELS_ASSIGN_TRANSFER,
+	// Read Channel Assignment Data
+	TASK_STATE_READ_CHANNELS_ASSIGN_TRANSFER,
 	// Convert
 	TASK_STATE_CONVERT_TRANSFER,
 	TASK_STATE_CONVERT_WAIT_HW,
 	// Read Temperature Results
 	TASK_STATE_TEMP_READ_RESULTS_TRANSFER,
 	TASK_STATE_TEMP_READ_ALL_RESULTS_TRANSFER,
-	// Convert && Read Temperature Results
-	TASK_STATE_CONVERT_TEMP_READ_RESULTS_START,//
-	TASK_STATE_CONVERT_TEMP_READ_RESULTS_WAIT_HW,//
-	TASK_STATE_CONVERT_TEMP_READ_RESULTS_TRANSFER,//
 } LTC2983TaskState_t;
 
 
@@ -508,12 +504,12 @@ void LTC2983_WriteMuxConfigDelay(const LTC2983MuxConfigDelay_t reg); // TODO
 /** Read LTC2983 Mux Configuration Delay. Driver must not be busy. */
 void LTC2983_ReadMuxConfigDelay(const LTC2983MuxConfigDelay_t * const reg); // TODO
 /** Write LTC2983 Measure Multiple Channels Bit Mask. Driver must not be busy. */
-void LTC2983_WriteMeasMultiChannelsMask(const LTC2983MeasMultiChannelsMask_t reg); // TODO
-/** Read LTC2983 Measure Multiple Channels Bit Mask. Driver must not be busy. */
-void LTC2983_ReadMeasMultiChannelsMask(const LTC2983MeasMultiChannelsMask_t * const reg); // TODO
-/** Convert LTC2983 Channel. Driver must not be busy. The temp result will be in the LTC->result 0 for all. */
-LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2983Channel_t channel); // rework to use multimask instead of iterations
-/** Read LTC2983 Temperature Result. Driver must not be busy. 0 for multimask channels. The temp results will be in the LTC->results. */
+LTC2983DriverStatus_t LTC2983_WriteMeasMultiChannelsMask(LTC2983Handle_t * const handle);
+/** Read LTC2983 Measure Multiple Channels Bit Mask. Overwrites old bit mask in handle. Driver must not be busy. */
+LTC2983DriverStatus_t LTC2983_ReadMeasMultiChannelsMask(LTC2983Handle_t * const handle);
+/** Convert LTC2983 Channel. Driver must not be busy. The temp result will be in the LTC->result 0 for bit mask. */
+LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2983Channel_t channel);
+/** Read LTC2983 Temperature Result. Driver must not be busy. 0 for multimask channels. The temp results will be in the handle->results. */
 LTC2983DriverStatus_t LTC2983_ReadTemperatureResults(LTC2983Handle_t * const handle, const LTC2983Channel_t channel);
 
 #ifdef	__cplusplus

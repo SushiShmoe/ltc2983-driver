@@ -514,15 +514,68 @@ void LTC2983_ReadMuxConfigDelay(const LTC2983MuxConfigDelay_t * const reg){
 
 }
 
-void LTC2983_WriteMeasMultiChannelsMask(const LTC2983MeasMultiChannelsMask_t reg){
+LTC2983DriverStatus_t LTC2983_WriteMeasMultiChannelsMask(LTC2983Handle_t * const handle){
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Initialized != false);
+	assert(handle->IfaceConfig != NULL);
+	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
+	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
+		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
+		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_BUSY){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_BUSY;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Initialized == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	handle->State->Status = LTC2983_DRIVER_STATUS_BUSY;
+	handle->State->TaskState = TASK_STATE_WRITE_4BYTES_TRANSFER;
+
+	LTC2983MeasMultiChannelsMask_t mask = handle->Mask;
+	_LTC2983_Write4Bytes(handle, LTC2983_MULTI_CHANNELS_MASK_REGISTER, mask);
+
+	return LTC2983_DRIVER_STATUS_OKAY;
 }
 
-void LTC2983_ReadMeasMultiChannelsMask(const LTC2983MeasMultiChannelsMask_t * const reg){
+LTC2983DriverStatus_t LTC2983_ReadMeasMultiChannelsMask(LTC2983Handle_t * const handle){
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Initialized != false);
+	assert(handle->IfaceConfig != NULL);
+	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
+	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
+		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
+		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_BUSY){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_BUSY;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Initialized == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	handle->State->Status = LTC2983_DRIVER_STATUS_BUSY;
+	handle->State->TaskState = TASK_STATE_READ_MULTIMASK_TRANSFER;
+
+	_LTC2983_Read4Bytes(handle, LTC2983_MULTI_CHANNELS_MASK_REGISTER);
+
+	return LTC2983_DRIVER_STATUS_OKAY;
 }
 
-LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2983Channel_t channel){ // TODO channel 0
+LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2983Channel_t channel){
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
 	assert(_LTC2983_IsChannelInTempResults(handle->Results, channel) != false || channel == 0);
@@ -625,7 +678,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
 	LTC2983Handle_t * const handle = _LTC2983_GetHandleByHspi(hspi);
 
-	if (handle == NULL){
+	if (!handle){
 		return;
 	}
 
@@ -635,6 +688,30 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	LTC2983RuntimeState_t * const state = handle->State;
 
 	switch (state->TaskState){
+		case TASK_STATE_WRITE_BYTE_TRANSFER: {
+			state->TaskState = TASK_STATE_IDLE;
+			state->Status = LTC2983_DRIVER_STATUS_NONE;
+			break;
+		}
+		case TASK_STATE_WRITE_4BYTES_TRANSFER: {
+			state->TaskState = TASK_STATE_IDLE;
+			state->Status = LTC2983_DRIVER_STATUS_NONE;
+			break;
+		}
+		case TASK_STATE_READ_MULTIMASK_TRANSFER: { // TODO
+			uint8_t * const rxBuffer = state->RxBuffer;
+
+			LTC2983MeasMultiChannelsMask_t readMask = 0;
+			readMask |= ((uint32_t)rxBuffer[3] << 16);
+			readMask |= ((uint32_t)rxBuffer[4] << 8);
+			readMask |= ((uint32_t)rxBuffer[5]);
+
+			handle->Mask = readMask;
+
+			state->TaskState = TASK_STATE_IDLE;
+			state->Status = LTC2983_DRIVER_STATUS_NONE;
+			break;
+		}
 		case TASK_STATE_WRITE_CHANNELS_ASSIGN_TRANSFER: {
 			volatile uint8_t * const pIdx = &state->WriteChannelsAssignmentDataIndex;
 
