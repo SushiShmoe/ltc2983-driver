@@ -34,13 +34,11 @@ typedef enum{
 	// Convert
 	TASK_STATE_CONVERT_TRANSFER,
 	TASK_STATE_CONVERT_WAIT_HW,
-	TASK_STATE_CONVERT_ALL_TRANSFER,
-	TASK_STATE_CONVERT_ALL_WAIT_HW,
 	// Read Temperature Results
 	TASK_STATE_TEMP_READ_RESULTS_TRANSFER,
 	TASK_STATE_TEMP_READ_ALL_RESULTS_TRANSFER,
 	// Convert && Read Temperature Results
-	TASK_STATE_CONVERT_TEMP_READ_RESULTS_START,
+	TASK_STATE_CONVERT_TEMP_READ_RESULTS_START,//
 	TASK_STATE_CONVERT_TEMP_READ_RESULTS_WAIT_HW,//
 	TASK_STATE_CONVERT_TEMP_READ_RESULTS_TRANSFER,//
 } LTC2983TaskState_t;
@@ -67,18 +65,25 @@ typedef enum {
 	LTC2983_DRIVER_ERROR_INVALID_CONFIGS,
 } LTC2983DriverError_t;
 
-/** Temperature result validity */
-typedef enum {
-	TEMP_MEAS_RESULT_INVALID,
-    TEMP_MEAS_RESULT_VALID,
-} LTC2983TempMeasResultStatus_t;
-
 /**  */
 typedef enum {
 	LTC2983_REGISTRY_STATUS_OKAY,
 	LTC2983_REGISTRY_STATUS_NO_POINTER,
 	LTC2983_REGISTRY_STATUS_ALREADY_INITIALIZED,
 } LTC2983RegistryStatus_t;
+
+/**  */
+typedef enum {
+	LTC2983_ENUM_CONV_STATUS_VALID,
+	LTC2983_ENUM_CONV_STATUS_INVALID,
+	LTC2983_ENUM_CONV_STATUS_ADC_RANGE_ERROR,
+	LTC2983_ENUM_CONV_STATUS_SENSOR_BELOW,
+	LTC2983_ENUM_CONV_STATUS_SENSOR_ABOVE,
+	LTC2983_ENUM_CONV_STATUS_CJ_SOFT_FAILURE,
+	LTC2983_ENUM_CONV_STATUS_CJ_HARD_FAILURE,
+	LTC2983_ENUM_CONV_STATUS_ADC_HARD_FAILURE,
+	LTC2983_ENUM_CONV_STATUS_SENSOR_HARD_FAILURE
+} LTC2983EnumConvStatus_t;
 
 /** LTC2983 channel number */
 typedef uint8_t LTC2983Channel_t;
@@ -153,20 +158,20 @@ typedef struct {
 
 /** LTC2983 channel configurations */
 typedef struct {
-    LTC2983ChannelConfig_t Configs[];
+    LTC2983ChannelConfig_t * Configs;
     uint8_t Count;
 } LTC2983ChannelConfigs_t;
 
 /** LTC2983 conversion result */
 typedef struct {
     LTC2983Channel_t Channel; // input param
-    LTC2983ConvStatus_t Status; // output param
+    LTC2983EnumConvStatus_t Status; // output param
     LTC2983Temperature_t Temperature; // output param
 } LTC2983ConvResult_t;
 
 /** LTC2983 conversion results */
 typedef struct {
-    LTC2983ConvResult_t Results[];
+    LTC2983ConvResult_t * const Results;
     uint8_t Count;
 } LTC2983ConvResults_t;
 
@@ -185,12 +190,12 @@ typedef struct { // TODO ten const
 
 	LTC2983MeasMultiChannelsMask_t Mask;
 
-	LTC2983TaskDoneCallback_t (TaskDoneCallback)(); // TODO spravny zapis
+	LTC2983TaskDoneCallback_t TaskDoneCallback;
 } LTC2983Handle_t;
 
 /** A registry of all the LTC2983 handles available */
 typedef struct{
-	LTC2983Handle_t *Handles[];
+	LTC2983Handle_t ** const Handles;
 	uint8_t Count;
 } LTC2983HandleRegistry_t;
 
@@ -473,9 +478,9 @@ extern "C" {
 /** Assignment of LTC2983HandleRegistry for the driver. */
 LTC2983RegistryStatus_t LTC2983_RegisterLTC2983HandleRegistry(LTC2983HandleRegistry_t * const handleRegistry);
 /** Unassignment of LTC2983HandleRegistry for the driver. */
-void LTC2983_UnRegisterLTC2983HandleRegistry(void);
+LTC2983RegistryStatus_t LTC2983_UnRegisterLTC2983HandleRegistry(void);
 /** Allocation, initialization and configuration of LTC2983 interface */
-void LTC2983_Init(LTC2983IfaceConfig_t * const config); // TODO
+LTC2983DriverStatus_t LTC2983_Init(LTC2983Handle_t * const handle); // TODO
 /** Initialization and deallocation of LTC2983 interface */
 void LTC2983_DeInit(void); // TODO vubec vymyslet
 /** Get driver status */
@@ -483,7 +488,7 @@ LTC2983DriverStatus_t LTC2983_GetDriverStatus(const LTC2983Handle_t * const hand
 /** Get driver error */
 LTC2983DriverError_t LTC2983_GetDriverError(const LTC2983Handle_t * const handle);
 /** Set task done callback */
-void LTC2983_RegisterTaskDoneCallback(LTC2983Handle_t * const handle, const LTC2983TaskDoneCallback_t callback);
+void LTC2983_RegisterTaskDoneCallback(LTC2983Handle_t * const handle, LTC2983TaskDoneCallback_t callback);
 /** Clear task done callback */
 void LTC2983_UnRegisterTaskDoneCallback(LTC2983Handle_t * const handle);
 /** Enter LTC2983 start-up sequence. Driver must not be busy. */
@@ -510,8 +515,6 @@ void LTC2983_ReadMeasMultiChannelsMask(const LTC2983MeasMultiChannelsMask_t * co
 LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2983Channel_t channel); // rework to use multimask instead of iterations
 /** Read LTC2983 Temperature Result. Driver must not be busy. 0 for multimask channels. The temp results will be in the LTC->results. */
 LTC2983DriverStatus_t LTC2983_ReadTemperatureResults(LTC2983Handle_t * const handle, const LTC2983Channel_t channel);
-/** Read LTC2983 Temperature Result. Driver must not be busy. Two above combined. */
-void LTC2983_ConvertAndReadTemperatureResults(LTC2983Handle_t * const handle, const LTC2983Channel_t channel); // TODO
 
 #ifdef	__cplusplus
 }
