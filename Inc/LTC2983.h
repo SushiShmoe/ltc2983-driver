@@ -20,12 +20,14 @@ typedef enum{
 	TASK_STATE_STARTUP_WAIT_READ,//
 	TASK_STATE_STARTUP_READ,//
 	// Write Segment byte
-	TASK_STATE_WRITE_BYTE_TRANSFER,//
-	// Read Segment byte
-	TASK_STATE_READ_BYTE_TRANSFER,//
+	TASK_STATE_WRITE_BYTE_TRANSFER,
+	// Read Segment byte of global config register
+	TASK_STATE_READ_GLOBAL_CONFIG_TRANSFER,
+	// Read Segment byte of mux config
+	TASK_STATE_READ_MUX_CONFIG_TRANSFER,
 	// Write Segment 4 bytes
 	TASK_STATE_WRITE_4BYTES_TRANSFER,
-	// Read Segment 4 bytes
+	// Read Segment 4 bytes of multi bit mask
 	TASK_STATE_READ_MULTIMASK_TRANSFER,
 	// Write Channel Assignment Data
 	TASK_STATE_WRITE_CHANNELS_ASSIGN_TRANSFER,
@@ -43,6 +45,7 @@ typedef enum{
 /** Driver status */
 typedef enum {
 	LTC2983_DRIVER_STATUS_NONE,
+	LTC2983_DRIVER_STATUS_WAKE_UP,
 	LTC2983_DRIVER_STATUS_BUSY,
 	LTC2983_DRIVER_STATUS_COMPLETE,
 	LTC2983_DRIVER_STATUS_ERROR,
@@ -184,7 +187,11 @@ typedef struct { // TODO ten const
 
 	LTC2983ConvResults_t * Results;
 
-	LTC2983MeasMultiChannelsMask_t Mask;
+	LTC2983MeasMultiChannelsMask_t BitMask;
+
+	LTC2983GlobalConfigReg_t GlobalConfigurationRegister;
+
+	LTC2983MuxConfigDelay_t MuxConfigDelay;
 
 	LTC2983TaskDoneCallback_t TaskDoneCallback;
 } LTC2983Handle_t;
@@ -477,10 +484,8 @@ LTC2983RegistryStatus_t LTC2983_RegisterLTC2983HandleRegistry(LTC2983HandleRegis
 LTC2983RegistryStatus_t LTC2983_UnRegisterLTC2983HandleRegistry(void);
 /** Allocation, initialization and configuration of LTC2983 interface */
 LTC2983DriverStatus_t LTC2983_Init(LTC2983Handle_t * const handle); // TODO
-/** Initialization and deallocation of LTC2983 interface */
-void LTC2983_DeInit(void); // TODO vubec vymyslet
 /** Get driver status */
-LTC2983DriverStatus_t LTC2983_GetDriverStatus(const LTC2983Handle_t * const handle); // TODO prepsat tak at se zepta LTC
+LTC2983DriverStatus_t LTC2983_GetDriverStatus(const LTC2983Handle_t * const handle);
 /** Get driver error */
 LTC2983DriverError_t LTC2983_GetDriverError(const LTC2983Handle_t * const handle);
 /** Set task done callback */
@@ -490,19 +495,19 @@ void LTC2983_UnRegisterTaskDoneCallback(LTC2983Handle_t * const handle);
 /** Enter LTC2983 start-up sequence. Driver must not be busy. */
 void LTC2983_StartUp(const LTC2983Handle_t * const handle); // TODO
 /** Place LTC2983 into sleep mode. Driver must not be busy. */
-void LTC2983_Sleep(const LTC2983Handle_t * const handle); // TODO
+LTC2983DriverStatus_t LTC2983_Sleep(const LTC2983Handle_t * const handle); // TODO
 /** Write LTC2983 Channel Assignment Data. Driver must not be busy. */
 LTC2983DriverStatus_t LTC2983_WriteChannelsAssignmentData(LTC2983Handle_t * const handle);
 /** Read LTC2983 Channel Assignment Data. Driver must not be busy. Careful, overwrites channels in LTC struct */
 LTC2983DriverStatus_t LTC2983_ReadChannelsAssignmentData(LTC2983Handle_t * const handle);
 /** Write LTC2983 Global Configuration Register. Driver must not be busy. */
-void LTC2983_WriteGlobalConfigReg(const LTC2983GlobalConfigReg_t reg); // TODO
+LTC2983DriverStatus_t LTC2983_WriteGlobalConfigReg(LTC2983Handle_t * const handle);
 /** Read LTC2983 Global Configuration Register. Driver must not be busy. */
-void LTC2983_ReadGlobalConfigReg(const LTC2983GlobalConfigReg_t * const reg); // TODO
+LTC2983DriverStatus_t LTC2983_ReadGlobalConfigReg(LTC2983Handle_t * const handle);
 /** Write LTC2983 Mux Configuration Delay. Driver must not be busy. */
-void LTC2983_WriteMuxConfigDelay(const LTC2983MuxConfigDelay_t reg); // TODO
+LTC2983DriverStatus_t LTC2983_WriteMuxConfigDelay(LTC2983Handle_t * const handle);
 /** Read LTC2983 Mux Configuration Delay. Driver must not be busy. */
-void LTC2983_ReadMuxConfigDelay(const LTC2983MuxConfigDelay_t * const reg); // TODO
+LTC2983DriverStatus_t LTC2983_ReadMuxConfigDelay(LTC2983Handle_t * const handle);
 /** Write LTC2983 Measure Multiple Channels Bit Mask. Driver must not be busy. */
 LTC2983DriverStatus_t LTC2983_WriteMeasMultiChannelsMask(LTC2983Handle_t * const handle);
 /** Read LTC2983 Measure Multiple Channels Bit Mask. Overwrites old bit mask in handle. Driver must not be busy. */
