@@ -160,7 +160,7 @@ static void _LTC2983_FireCallback(const LTC2983Handle_t * const handle)
 {
     if (handle->TaskDoneCallback)
     {
-        handle->TaskDoneCallback();
+        handle->TaskDoneCallback(handle);
     }
 }
 
@@ -368,8 +368,9 @@ LTC2983DriverStatus_t LTC2983_Init(LTC2983Handle_t * const handle){
 			HAL_GPIO_WritePin(CSpin->Port, CSpin->Pin, GPIO_PIN_SET);
 
 
-			state->Status = LTC2983_GetDriverStatus(handle);
+			state->Status = LTC2983_DRIVER_STATUS_SLEEP;
 			state->Error = LTC2983_DRIVER_ERROR_NONE;
+			state->TaskState = TASK_STATE_IDLE;
 			state->WriteChannelsAssignmentDataIndex = 0;
 			state->ReadChannelsAssignmentDataIndex = 0;
 			state->ReadAllIndex = 0;
@@ -377,8 +378,12 @@ LTC2983DriverStatus_t LTC2983_Init(LTC2983Handle_t * const handle){
 
 
 			state->Initialized = true;
+			state->StartupDone = false;
+			state->ChannelsConfigured = false;
 
-			return LTC2983_DRIVER_STATUS_OKAY;
+			handle->TaskDoneCallback = NULL;
+
+			return LTC2983_DRIVER_STATUS_NONE;
 		}
 	}
 
@@ -407,10 +412,78 @@ void LTC2983_UnRegisterTaskDoneCallback(LTC2983Handle_t * const handle){ //TODO 
 	handle->TaskDoneCallback = NULL;
 }
 
-void LTC2983_StartUp(const LTC2983Handle_t * const handle){
+LTC2983DriverStatus_t LTC2983_StartUp(const LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Initialized != false);
+	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
+
+	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
+		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_BUSY){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_BUSY;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Initialized == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	LTC2983RuntimeState_t * const pState = handle->State;
+
+	pState->Status = LTC2983_DRIVER_STATUS_BUSY;
+	pState->TaskState = TASK_STATE_STARTUP_TRANSFER;
+
+	_LTC2983_ReadByte(handle, LTC2983_COMMAND_STATUS_REGISTER);
+
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
-void LTC2983_Sleep(const LTC2983Handle_t * const handle){
+LTC2983DriverStatus_t LTC2983_Sleep(const LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
+	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
+
+	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
+		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_BUSY){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_BUSY;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Initialized == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	LTC2983RuntimeState_t * const pState = handle->State;
+
+	pState->Status = LTC2983_DRIVER_STATUS_BUSY;
+	pState->TaskState = TASK_STATE_SLEEP_TRANSFER;
+
+	_LTC2983_WriteByte(handle, LTC2983_COMMAND_STATUS_REGISTER, LTC2983_COMMAND_STATUS_SLEEP);
+
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_WriteChannelsAssignmentData(LTC2983Handle_t * const handle){
@@ -418,25 +491,34 @@ LTC2983DriverStatus_t LTC2983_WriteChannelsAssignmentData(LTC2983Handle_t * cons
 	assert(handle->ChannelConfigs != NULL);
 	assert(handle->ChannelConfigs->Count > 0);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
 	if (handle->State->Status == LTC2983_DRIVER_STATUS_BUSY){
 		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -451,7 +533,7 @@ LTC2983DriverStatus_t LTC2983_WriteChannelsAssignmentData(LTC2983Handle_t * cons
 	const LTC2983ChannelConfig_t * const config = &configs[channelsIndex];
 	_LTC2983_WriteSingleChannelAssignmentData(handle, config);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_ReadChannelsAssignmentData(LTC2983Handle_t * const handle){
@@ -459,24 +541,34 @@ LTC2983DriverStatus_t LTC2983_ReadChannelsAssignmentData(LTC2983Handle_t * const
 	assert(handle->ChannelConfigs != NULL);
 	assert(handle->ChannelConfigs->Count > 0);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
-
 
 	if (handle->State->Status == LTC2983_DRIVER_STATUS_BUSY){
 		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_BUSY;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -491,18 +583,20 @@ LTC2983DriverStatus_t LTC2983_ReadChannelsAssignmentData(LTC2983Handle_t * const
 	const LTC2983ChannelConfig_t * const config = &configs[channelsIndex];
 	_LTC2983_ReadSingleChannelAssignmentData(handle, config);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_WriteGlobalConfigReg(LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -511,8 +605,18 @@ LTC2983DriverStatus_t LTC2983_WriteGlobalConfigReg(LTC2983Handle_t * const handl
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -522,18 +626,20 @@ LTC2983DriverStatus_t LTC2983_WriteGlobalConfigReg(LTC2983Handle_t * const handl
 	LTC2983MuxConfigDelay_t globalConfig = handle->GlobalConfigurationRegister;
 	_LTC2983_WriteByte(handle, LTC2983_GLOBAL_CONFIG_REGISTER, globalConfig);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_ReadGlobalConfigReg(LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -542,8 +648,18 @@ LTC2983DriverStatus_t LTC2983_ReadGlobalConfigReg(LTC2983Handle_t * const handle
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -552,18 +668,20 @@ LTC2983DriverStatus_t LTC2983_ReadGlobalConfigReg(LTC2983Handle_t * const handle
 
 	_LTC2983_ReadByte(handle, LTC2983_GLOBAL_CONFIG_REGISTER);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_WriteMuxConfigDelay(LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -572,8 +690,18 @@ LTC2983DriverStatus_t LTC2983_WriteMuxConfigDelay(LTC2983Handle_t * const handle
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -583,18 +711,20 @@ LTC2983DriverStatus_t LTC2983_WriteMuxConfigDelay(LTC2983Handle_t * const handle
 	LTC2983MuxConfigDelay_t muxConfig = handle->MuxConfigDelay;
 	_LTC2983_WriteByte(handle, LTC2983_MUX_CONFIG_DELAY_REGISTER, muxConfig);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_ReadMuxConfigDelay(LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -603,8 +733,18 @@ LTC2983DriverStatus_t LTC2983_ReadMuxConfigDelay(LTC2983Handle_t * const handle)
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -613,18 +753,20 @@ LTC2983DriverStatus_t LTC2983_ReadMuxConfigDelay(LTC2983Handle_t * const handle)
 
 	_LTC2983_ReadByte(handle, LTC2983_MUX_CONFIG_DELAY_REGISTER);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_WriteMeasMultiChannelsMask(LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -633,8 +775,18 @@ LTC2983DriverStatus_t LTC2983_WriteMeasMultiChannelsMask(LTC2983Handle_t * const
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -644,18 +796,20 @@ LTC2983DriverStatus_t LTC2983_WriteMeasMultiChannelsMask(LTC2983Handle_t * const
 	LTC2983MeasMultiChannelsMask_t mask = handle->BitMask;
 	_LTC2983_Write4Bytes(handle, LTC2983_MULTI_CHANNELS_MASK_REGISTER, mask);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_ReadMeasMultiChannelsMask(LTC2983Handle_t * const handle){
+	assert(handle != NULL);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
+	assert(handle->State->StartupDone != false);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
 	if (_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == true){
 		handle->State->Error = LTC2983_DRIVER_ERROR_SPI_BUSY;
-		handle->State->Status = LTC2983_DRIVER_STATUS_ERROR;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -664,8 +818,18 @@ LTC2983DriverStatus_t LTC2983_ReadMeasMultiChannelsMask(LTC2983Handle_t * const 
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
@@ -674,13 +838,16 @@ LTC2983DriverStatus_t LTC2983_ReadMeasMultiChannelsMask(LTC2983Handle_t * const 
 
 	_LTC2983_Read4Bytes(handle, LTC2983_MULTI_CHANNELS_MASK_REGISTER);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2983Channel_t channel){
+	assert(handle != NULL);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Initialized != false);
-	assert(_LTC2983_IsChannelInTempResults(handle->Results, channel) != false || channel == 0);
+	assert(handle->State->StartupDone != false);
+	assert(_LTC2983_IsChannelInTempResults(handle->Results, channel) != false || channel == LTC2983_MULTIPLE_CHANNELS);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
@@ -695,12 +862,22 @@ LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
-	if (_LTC2983_IsChannelInTempResults(handle->Results, channel) == false && channel != 0){
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (_LTC2983_IsChannelInTempResults(handle->Results, channel) == false && channel != LTC2983_MULTIPLE_CHANNELS){
 		handle->State->Error = LTC2983_DRIVER_ERROR_INVALID_CHANNEL;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
@@ -710,13 +887,16 @@ LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2
 	handle->State->TaskState = TASK_STATE_CONVERT_TRANSFER;
 	_LTC2983_Convert(handle, channel);
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 LTC2983DriverStatus_t LTC2983_ReadTemperatureResults(LTC2983Handle_t * const handle, const LTC2983Channel_t channel){
+	assert(handle != NULL);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
+	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Initialized != false);
-	assert(_LTC2983_IsChannelInTempResults(handle->Results, channel) != false || channel == 0);
+	assert(handle->State->StartupDone != false);
+	assert(_LTC2983_IsChannelInTempResults(handle->Results, channel) != false || channel == LTC2983_MULTIPLE_CHANNELS);
 	assert(handle->IfaceConfig != NULL);
 	assert(_LTC2983_IsSpiBusy(handle->IfaceConfig->hspi) == false);
 
@@ -731,19 +911,29 @@ LTC2983DriverStatus_t LTC2983_ReadTemperatureResults(LTC2983Handle_t * const han
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
+	if (handle->State->Status == LTC2983_DRIVER_STATUS_SLEEP){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
 	if (handle->State->Initialized == false){
 		handle->State->Error = LTC2983_DRIVER_ERROR_NOT_INITIALIZED;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
-	if (_LTC2983_IsChannelInTempResults(handle->Results, channel) == false && channel != 0){
+	if (handle->State->StartupDone == false){
+		handle->State->Error = LTC2983_DRIVER_ERROR_DEVICE_SLEEPING;
+		return LTC2983_DRIVER_STATUS_ERROR;
+	}
+
+	if (_LTC2983_IsChannelInTempResults(handle->Results, channel) == false && channel != LTC2983_MULTIPLE_CHANNELS){
 		handle->State->Error = LTC2983_DRIVER_ERROR_INVALID_CHANNEL;
 		return LTC2983_DRIVER_STATUS_ERROR;
 	}
 
 	handle->State->Status = LTC2983_DRIVER_STATUS_BUSY;
 
-	if (channel == 0){
+	if (channel == LTC2983_MULTIPLE_CHANNELS){
 		handle->State->TaskState = TASK_STATE_TEMP_READ_ALL_RESULTS_TRANSFER;
 
 		LTC2983MeasMultiChannelsMask_t multimask = handle->BitMask;
@@ -766,7 +956,7 @@ LTC2983DriverStatus_t LTC2983_ReadTemperatureResults(LTC2983Handle_t * const han
 		_LTC2983_ReadTemperatureResults(handle, channel);
 	}
 
-	return LTC2983_DRIVER_STATUS_OKAY;
+	return LTC2983_DRIVER_STATUS_NONE;
 }
 
 
@@ -790,9 +980,35 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	LTC2983RuntimeState_t * const state = handle->State;
 
 	switch (state->TaskState){
+		case TASK_STATE_STARTUP_TRANSFER: {
+			uint8_t * const rxBuffer = state->RxBuffer;
+
+			uint8_t response = rxBuffer[3];
+
+			if (response == LTC2983_COMMAND_STATUS_DONE){
+				state->Status = LTC2983_DRIVER_STATUS_NONE;
+			}
+			else {
+				state->Status = LTC2983_DRIVER_STATUS_SLEEP;
+			}
+
+			state->TaskState = TASK_STATE_IDLE;
+
+			_LTC2983_FireCallback(handle);
+			break;
+		}
+		case TASK_STATE_SLEEP_TRANSFER: {
+			state->TaskState = TASK_STATE_IDLE;
+			state->Status = LTC2983_DRIVER_STATUS_SLEEP;
+
+			_LTC2983_FireCallback(handle);
+			break;
+		}
 		case TASK_STATE_WRITE_BYTE_TRANSFER: {
 			state->TaskState = TASK_STATE_IDLE;
 			state->Status = LTC2983_DRIVER_STATUS_NONE;
+
+			_LTC2983_FireCallback(handle);
 			break;
 		}
 		case TASK_STATE_READ_GLOBAL_CONFIG_TRANSFER: {
@@ -804,6 +1020,8 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
 			state->TaskState = TASK_STATE_IDLE;
 			state->Status = LTC2983_DRIVER_STATUS_NONE;
+
+			_LTC2983_FireCallback(handle);
 			break;
 		}
 		case TASK_STATE_READ_MUX_CONFIG_TRANSFER: {
@@ -815,11 +1033,15 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
 			state->TaskState = TASK_STATE_IDLE;
 			state->Status = LTC2983_DRIVER_STATUS_NONE;
+
+			_LTC2983_FireCallback(handle);
 			break;
 		}
 		case TASK_STATE_WRITE_4BYTES_TRANSFER: {
 			state->TaskState = TASK_STATE_IDLE;
 			state->Status = LTC2983_DRIVER_STATUS_NONE;
+
+			_LTC2983_FireCallback(handle);
 			break;
 		}
 		case TASK_STATE_READ_MULTIMASK_TRANSFER: {
@@ -834,6 +1056,8 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
 			state->TaskState = TASK_STATE_IDLE;
 			state->Status = LTC2983_DRIVER_STATUS_NONE;
+
+			_LTC2983_FireCallback(handle);
 			break;
 		}
 		case TASK_STATE_WRITE_CHANNELS_ASSIGN_TRANSFER: {
@@ -853,6 +1077,8 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 				state->TaskState = TASK_STATE_IDLE;
 				state->Status = LTC2983_DRIVER_STATUS_COMPLETE;
 				state->Error = LTC2983_DRIVER_ERROR_NONE;
+
+				_LTC2983_FireCallback(handle);
 			}
 			break;
 		}
@@ -881,11 +1107,16 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
 				state->TaskState = TASK_STATE_IDLE;
 				state->Status = LTC2983_DRIVER_STATUS_NONE;
+				state->Error = LTC2983_DRIVER_ERROR_NONE;
+
+				_LTC2983_FireCallback(handle);
 			}
 			break;
 		}
 		case TASK_STATE_CONVERT_TRANSFER: {
 			state->TaskState = TASK_STATE_CONVERT_WAIT_HW;
+
+			_LTC2983_FireCallback(handle);
 			break;
 		}
 		case TASK_STATE_TEMP_READ_RESULTS_TRANSFER:{
@@ -905,8 +1136,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 			state->Status = LTC2983_DRIVER_STATUS_COMPLETE;
 
 			_LTC2983_FireCallback(handle);
+			break;
 		}
-		case TASK_STATE_TEMP_READ_ALL_RESULTS_TRANSFER:{ // TODO
+		case TASK_STATE_TEMP_READ_ALL_RESULTS_TRANSFER:{
 			uint8_t lastChannel = state->LastChannelRead;
 
 			LTC2983ConvResult_t * const result = _LTC2983_FindConvResult(handle->Results, lastChannel);
@@ -936,7 +1168,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 				}
 			}
 
-			if (!sent){
+			if (!sent){ // Sets to done if all of the channels were read from LTC
 				state->TaskState = TASK_STATE_IDLE;
 				state->Status = LTC2983_DRIVER_STATUS_COMPLETE;
 
@@ -950,7 +1182,6 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	}
 }
 
-static void LTC2983ExtiStateMachine();
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	assert(globalHandleRegistry != NULL);
 
@@ -962,11 +1193,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 	const GpioChannel_t * const CSpin = &handle->IfaceConfig->GpioChipSelect;
 	HAL_GPIO_WritePin(CSpin->Port, CSpin->Pin, GPIO_PIN_SET);
-
-	LTC2983ExtiStateMachine(handle);
-}
-
-static void LTC2983ExtiStateMachine(LTC2983Handle_t * const handle){
 	LTC2983RuntimeState_t * const state = handle->State;
 
 	switch (state->TaskState){

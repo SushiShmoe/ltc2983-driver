@@ -15,10 +15,9 @@
 /** Driver task state */
 typedef enum{
 	TASK_STATE_IDLE,
-	// Start-Up
-	TASK_STATE_STARTUP_RESET,//
-	TASK_STATE_STARTUP_WAIT_READ,//
-	TASK_STATE_STARTUP_READ,//
+	// Start-Up && sleep
+	TASK_STATE_STARTUP_TRANSFER,//
+	TASK_STATE_SLEEP_TRANSFER,//
 	// Write Segment byte
 	TASK_STATE_WRITE_BYTE_TRANSFER,
 	// Read Segment byte of global config register
@@ -45,17 +44,16 @@ typedef enum{
 /** Driver status */
 typedef enum {
 	LTC2983_DRIVER_STATUS_NONE,
-	LTC2983_DRIVER_STATUS_WAKE_UP,
+	LTC2983_DRIVER_STATUS_SLEEP,
 	LTC2983_DRIVER_STATUS_BUSY,
 	LTC2983_DRIVER_STATUS_COMPLETE,
 	LTC2983_DRIVER_STATUS_ERROR,
-	LTC2983_DRIVER_STATUS_OKAY,
 } LTC2983DriverStatus_t;
 
 /** Driver error */
 typedef enum {
 	LTC2983_DRIVER_ERROR_NONE,
-    LTC2983_DRIVER_ERROR_STARTUP,
+    LTC2983_DRIVER_ERROR_DEVICE_SLEEPING,
     LTC2983_DRIVER_ERROR_SPI_BUSY,
     LTC2983_DRIVER_ERROR_DEVICE_BUSY,
     LTC2983_DRIVER_ERROR_WAIT_HW,
@@ -128,6 +126,8 @@ typedef struct {
 /** LTC2983 internal state */
 typedef struct{
 	volatile bool Initialized;
+	volatile bool StartupDone;
+	volatile bool ChannelsConfigured;
 
 	volatile LTC2983DriverStatus_t Status;
 	volatile LTC2983DriverError_t Error;
@@ -140,9 +140,6 @@ typedef struct{
 	// Write and read channels assignment helper variables
 	volatile uint8_t WriteChannelsAssignmentDataIndex;
 	volatile uint8_t ReadChannelsAssignmentDataIndex;
-
-	// Temp index for converting all of the channels
-	volatile uint8_t ConvertAllIndex;
 
 	// Temp read temperature result of channel variable
 	volatile uint8_t ReadAllIndex;
@@ -174,18 +171,19 @@ typedef struct {
     uint8_t Count;
 } LTC2983ConvResults_t;
 
+struct LTC2983Handle_s;
 /** LTC2983 task done callback type */
-typedef void(*LTC2983TaskDoneCallback_t)(void);
+typedef void(*LTC2983TaskDoneCallback_t)(struct LTC2983Handle_s *handle);
 
 /** A general handle for each LTC2983 */
-typedef struct { // TODO ten const
+typedef struct LTC2983Handle_s{
 	LTC2983IfaceConfig_t * IfaceConfig;
 
 	LTC2983ChannelConfigs_t * ChannelConfigs;
 
-	LTC2983RuntimeState_t * State;
-
 	LTC2983ConvResults_t * Results;
+
+	LTC2983RuntimeState_t * State;
 
 	LTC2983MeasMultiChannelsMask_t BitMask;
 
@@ -483,7 +481,7 @@ LTC2983RegistryStatus_t LTC2983_RegisterLTC2983HandleRegistry(LTC2983HandleRegis
 /** Unassignment of LTC2983HandleRegistry for the driver. */
 LTC2983RegistryStatus_t LTC2983_UnRegisterLTC2983HandleRegistry(void);
 /** Allocation, initialization and configuration of LTC2983 interface */
-LTC2983DriverStatus_t LTC2983_Init(LTC2983Handle_t * const handle); // TODO
+LTC2983DriverStatus_t LTC2983_Init(LTC2983Handle_t * const handle);
 /** Get driver status */
 LTC2983DriverStatus_t LTC2983_GetDriverStatus(const LTC2983Handle_t * const handle);
 /** Get driver error */
@@ -492,10 +490,10 @@ LTC2983DriverError_t LTC2983_GetDriverError(const LTC2983Handle_t * const handle
 void LTC2983_RegisterTaskDoneCallback(LTC2983Handle_t * const handle, LTC2983TaskDoneCallback_t callback);
 /** Clear task done callback */
 void LTC2983_UnRegisterTaskDoneCallback(LTC2983Handle_t * const handle);
-/** Enter LTC2983 start-up sequence. Driver must not be busy. */
-void LTC2983_StartUp(const LTC2983Handle_t * const handle); // TODO
+/** Enter LTC2983 start-up or checks if LTC2983 is awake. Driver must not be busy. */
+LTC2983DriverStatus_t LTC2983_StartUp(const LTC2983Handle_t * const handle);
 /** Place LTC2983 into sleep mode. Driver must not be busy. */
-LTC2983DriverStatus_t LTC2983_Sleep(const LTC2983Handle_t * const handle); // TODO
+LTC2983DriverStatus_t LTC2983_Sleep(const LTC2983Handle_t * const handle);
 /** Write LTC2983 Channel Assignment Data. Driver must not be busy. */
 LTC2983DriverStatus_t LTC2983_WriteChannelsAssignmentData(LTC2983Handle_t * const handle);
 /** Read LTC2983 Channel Assignment Data. Driver must not be busy. Careful, overwrites channels in LTC struct */
