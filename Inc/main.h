@@ -57,18 +57,13 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define LTC2_EXTI_Pin GPIO_PIN_0
-#define LTC2_EXTI_GPIO_Port GPIOA
-#define LTC2_CS_Pin GPIO_PIN_12
-#define LTC2_CS_GPIO_Port GPIOB
-#define LTC1_CS_Pin GPIO_PIN_8
-#define LTC1_CS_GPIO_Port GPIOA
-#define LTC2_RST_Pin GPIO_PIN_15
-#define LTC2_RST_GPIO_Port GPIOA
-#define LTC1_EXTI_Pin GPIO_PIN_8
-#define LTC1_EXTI_GPIO_Port GPIOB
-#define LTC1_RST_Pin GPIO_PIN_9
-#define LTC1_RST_GPIO_Port GPIOB
+#define LTC1_CS_Pin GPIO_PIN_1
+#define LTC1_CS_GPIO_Port GPIOH
+#define LTC1_EXTI_Pin GPIO_PIN_0
+#define LTC1_EXTI_GPIO_Port GPIOA
+#define LTC1_EXTI_EXTI_IRQn EXTI0_IRQn
+#define LTC1_RST_Pin GPIO_PIN_15
+#define LTC1_RST_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

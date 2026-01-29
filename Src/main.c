@@ -56,20 +56,35 @@ LTC2983IfaceConfig_t ltc1IFaceConfig = {
 		.hspi = &hspi2,
 		.GpioChipSelect = {.Pin = LTC1_CS_Pin, .Port = LTC1_CS_GPIO_Port},
 		.GpioReset = {.Pin = LTC1_RST_Pin, .Port = LTC1_RST_GPIO_Port},
-		.GpioInterrupt = {.Pin = GPIO_PIN_8, .Port = LTC1_EXTI_GPIO_Port}
+		.GpioInterrupt = {.Pin = LTC1_EXTI_Pin, .Port = LTC1_EXTI_GPIO_Port}
 };
 
 const float rsenseResistorValue = 5050.0; // ohms
-LTC2983ChannelConfig_t ltc1ChannelArray[] = {
+LTC2983ChannelConfig_t ltc1ChannelArray[5] = {
 		{ // Rsense resistor
 			.Channel = 	2,
 			.Data = LTC2983_SENSOR_TYPE__SENSE_RESISTOR | (uint32_t)(rsenseResistorValue * 1024) // resolution per bit
 		},
 		{ // rtd1, sensor type and excitation current is an unknown
 			.Channel = 4,
-			.Data = LTC2983_SENSOR_TYPE__RTD_PT_100 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
+			.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
 			| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
 		},
+		{
+				.Channel = 6,
+				.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
+				| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
+		},
+		{
+				.Channel = 8,
+				.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
+				| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
+		},
+		{
+				.Channel = 10,
+				.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
+				| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
+		}
 };
 
 LTC2983ChannelConfigs_t ltc1ChannelConfigs = {
@@ -77,9 +92,18 @@ LTC2983ChannelConfigs_t ltc1ChannelConfigs = {
 		.Count = sizeof(ltc1ChannelArray) / sizeof(LTC2983ChannelConfig_t)
 };
 
-LTC2983ConvResult_t ltc1ConvResultArray[] = {
+LTC2983ConvResult_t ltc1ConvResultArray[4] = {
 		{
 				.Channel = 4, .Status = 0, .Temperature = 0
+		},
+		{
+				.Channel = 6, .Status = 0, .Temperature = 0
+		},
+		{
+				.Channel = 8, .Status = 0, .Temperature = 0
+		},
+		{
+				.Channel = 10, .Status = 0, .Temperature = 0
 		}
 };
 
@@ -95,12 +119,12 @@ LTC2983Handle_t ltc1Handle = {
 		.ChannelConfigs = &ltc1ChannelConfigs,
 		.Results = &ltc1ConvResults,
 		.State = &ltc1State,
-		.BitMask = 1 << 3, // channel 4
+		.BitMask = 1 << 3 | 1 << 5 | 1 << 7 | 1 << 9, // channel 4, 6, 8, 10
 		.GlobalConfigurationRegister = LTC2983_REJECTION__50_60_HZ | LTC2983_TEMP_UNIT__C,
 		.MuxConfigDelay = 10 // for 1ms delay, dunno why i just decided so
 };
 
-LTC2983Handle_t* handlesArray[] = { &ltc1Handle };
+LTC2983Handle_t* handlesArray[1] = { &ltc1Handle };
 
 LTC2983HandleRegistry_t handleRegistry = {
 		.Handles = handlesArray,
@@ -172,45 +196,100 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+	  LTC2983RuntimeState_t * ltc1State = ltc1Handle.State;
 
-	  LTC2983RuntimeState_t * state = ltc1Handle.State;
-
-	  if (state->Status == LTC2983_DRIVER_STATUS_SLEEP){
+	  if (ltc1State->Status == LTC2983_DRIVER_STATUS_SLEEP){
 		  LTC2983_StartUp(&ltc1Handle);
 		  continue;
 	  }
 
-	  if (state->Status != LTC2983_DRIVER_STATUS_BUSY){
-		  switch (step){
-			  case 0:{
-				  LTC2983_WriteGlobalConfigReg(&ltc1Handle);
-				  break;
-			  }
-			  case 1:{
-				  LTC2983_WriteMuxConfigDelay(&ltc1Handle);
-				  break;
-			  }
-			  case 2:{
-				  LTC2983_WriteMeasMultiChannelsMask(&ltc1Handle);
-				  break;
-			  }
-			  case 3:{
-				  LTC2983_WriteChannelsAssignmentData(&ltc1Handle);
-				  break;
-			  }
-			  case 4:{
-				  LTC2983_Convert(&ltc1Handle, 4);
-				  break;
-			  }
-			  case 5:{
-				  LTC2983_ReadTemperatureResults(&ltc1Handle, 4);
-				  break;
-			  }
-		  }
-
-		  step++;
+	  if (ltc1State->Status == LTC2983_DRIVER_STATUS_BUSY) {
+		  continue;
 	  }
+
+	  switch (step){
+	  	  case 0:{
+	  		  LTC2983_WriteGlobalConfigReg(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 1:{
+	  		  LTC2983_ReadGlobalConfigReg(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 2:{
+	  		  LTC2983_WriteMuxConfigDelay(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 3:{
+	  		  LTC2983_ReadMuxConfigDelay(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 4:{
+	  		  LTC2983_WriteMeasMultiChannelsMask(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 5:{
+	  		  LTC2983_ReadMeasMultiChannelsMask(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 6:{
+	  		  LTC2983_WriteChannelsAssignmentData(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 7:{
+	  		  LTC2983_ReadChannelsAssignmentData(&ltc1Handle);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 8:{
+	  		  LTC2983_Convert(&ltc1Handle, 4);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 9:{
+	  		  LTC2983_ReadTemperatureResults(&ltc1Handle, 4);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 10:{
+	  		  LTC2983_Convert(&ltc1Handle, 0);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 11:{
+	  		  LTC2983_ReadTemperatureResults(&ltc1Handle, 0);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  	  case 12:{
+	  		  LTC2983_ReadTemperatureResults(&ltc1Handle, 0);
+
+	  		  step++;
+	  		  break;
+	  	  }
+	  }
+
+
+    /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
@@ -410,40 +489,39 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LTC2_CS_Pin|LTC1_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LTC1_CS_GPIO_Port, LTC1_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LTC1_CS_Pin|LTC2_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LTC1_RST_GPIO_Port, LTC1_RST_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LTC2_EXTI_Pin */
-  GPIO_InitStruct.Pin = LTC2_EXTI_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(LTC2_EXTI_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : LTC2_CS_Pin LTC1_RST_Pin */
-  GPIO_InitStruct.Pin = LTC2_CS_Pin|LTC1_RST_Pin;
+  /*Configure GPIO pin : LTC1_CS_Pin */
+  GPIO_InitStruct.Pin = LTC1_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : LTC1_CS_Pin LTC2_RST_Pin */
-  GPIO_InitStruct.Pin = LTC1_CS_Pin|LTC2_RST_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(LTC1_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LTC1_EXTI_Pin */
   GPIO_InitStruct.Pin = LTC1_EXTI_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(LTC1_EXTI_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LTC1_RST_Pin */
+  GPIO_InitStruct.Pin = LTC1_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LTC1_RST_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

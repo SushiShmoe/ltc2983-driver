@@ -121,8 +121,6 @@ typedef struct {
     GpioChannel_t GpioInterrupt; // external interrupt
 } LTC2983IfaceConfig_t;
 
-//TODO pridat takovy to preprocesorovy __packed__
-
 /** LTC2983 internal state */
 typedef struct{
 	volatile bool Initialized;
@@ -134,8 +132,8 @@ typedef struct{
 	volatile LTC2983TaskState_t TaskState;
 
 	// 1B instructions + 2B address + 4B data
-	uint8_t TxBuffer[7];
-	uint8_t RxBuffer[7];
+	uint8_t TxBuffer[7] __attribute__((aligned(32)));
+	uint8_t RxBuffer[7] __attribute__((aligned(32)));
 
 	// Write and read channels assignment helper variables
 	volatile uint8_t WriteChannelsAssignmentDataIndex;
@@ -148,7 +146,7 @@ typedef struct{
 
 /** LTC2983 channel configuration */
 typedef struct {
-    LTC2983Channel_t Channel; // input param
+    LTC2983Channel_t Channel;
     LTC2983ChannelAssignmentData_t Data;
 } LTC2983ChannelConfig_t;
 
@@ -161,8 +159,8 @@ typedef struct {
 /** LTC2983 conversion result */
 typedef struct {
     LTC2983Channel_t Channel; // input param
-    LTC2983EnumConvStatus_t Status; // output param
-    LTC2983Temperature_t Temperature; // output param
+    volatile LTC2983EnumConvStatus_t Status; // output param
+    volatile LTC2983Temperature_t Temperature; // output param
 } LTC2983ConvResult_t;
 
 /** LTC2983 conversion results */
@@ -173,7 +171,7 @@ typedef struct {
 
 struct LTC2983Handle_s;
 /** LTC2983 task done callback type */
-typedef void(*LTC2983TaskDoneCallback_t)(struct LTC2983Handle_s *handle);
+typedef void(*LTC2983TaskDoneCallback_t)(struct LTC2983Handle_s * const handle);
 
 /** A general handle for each LTC2983 */
 typedef struct LTC2983Handle_s{
@@ -491,9 +489,9 @@ void LTC2983_RegisterTaskDoneCallback(LTC2983Handle_t * const handle, LTC2983Tas
 /** Clear task done callback */
 void LTC2983_UnRegisterTaskDoneCallback(LTC2983Handle_t * const handle);
 /** Enter LTC2983 start-up or checks if LTC2983 is awake. Driver must not be busy. */
-LTC2983DriverStatus_t LTC2983_StartUp(const LTC2983Handle_t * const handle);
+LTC2983DriverStatus_t LTC2983_StartUp(LTC2983Handle_t * const handle);
 /** Place LTC2983 into sleep mode. Driver must not be busy. */
-LTC2983DriverStatus_t LTC2983_Sleep(const LTC2983Handle_t * const handle);
+LTC2983DriverStatus_t LTC2983_Sleep(LTC2983Handle_t * const handle);
 /** Write LTC2983 Channel Assignment Data. Driver must not be busy. */
 LTC2983DriverStatus_t LTC2983_WriteChannelsAssignmentData(LTC2983Handle_t * const handle);
 /** Read LTC2983 Channel Assignment Data. Driver must not be busy. Careful, overwrites channels in LTC struct */

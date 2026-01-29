@@ -156,7 +156,7 @@ static LTC2983MemoryAddress_t _LTC2983_GetChannelStartAddress(const LTC2983Memor
     return baseAddress + 4 * (channel - 1);
 }
 
-static void _LTC2983_FireCallback(const LTC2983Handle_t * const handle)
+static void _LTC2983_FireCallback(LTC2983Handle_t * const handle)
 {
     if (handle->TaskDoneCallback)
     {
@@ -165,14 +165,14 @@ static void _LTC2983_FireCallback(const LTC2983Handle_t * const handle)
 }
 
 
-static void _LTC2983_WriteSingleChannelAssignmentData(LTC2983Handle_t * const handle, const LTC2983ChannelConfig_t * const config){ // TODO check if the const work
+static void _LTC2983_WriteSingleChannelAssignmentData(LTC2983Handle_t * const handle, const LTC2983ChannelConfig_t * const config){
 	assert(handle != NULL);
 	assert(config != NULL);
 
 	LTC2983Channel_t targetChannel = config->Channel;
 	const LTC2983MemoryAddress_t channelAddress = _LTC2983_GetChannelStartAddress(LTC2983_CH_ADDRESS_BASE, targetChannel);
 
-	const uint8_t transferData = config->Data;
+	const LTC2983ChannelAssignmentData_t transferData = config->Data;
 	_LTC2983_Write4Bytes(handle, channelAddress, transferData);
 }
 
@@ -208,16 +208,19 @@ static void _LTC2983_ReadTemperatureResults(LTC2983Handle_t * const handle, cons
 static void _LTC2983_ProcessTempRead(LTC2983Handle_t * const handle, LTC2983RuntimeState_t * const state, LTC2983ConvResult_t * const result){
 	uint8_t * const rxBuffer = state->RxBuffer;
 
-	uint8_t status = 0;
-	status |= ((uint32_t)rxBuffer[3]) << 24;
+	uint8_t status = rxBuffer[3];
 
-	if ((status & LTC2983_CONV_STATUS_VALID) == LTC2983_CONV_STATUS_VALID){
-		uint32_t temperature = 0;
-		temperature |= ((uint32_t)rxBuffer[4]) << 16;
-		temperature |= ((uint32_t)rxBuffer[5]) << 8;
-		temperature |= ((uint32_t)rxBuffer[6]);
+	if (((status & LTC2983_CONV_STATUS_VALID) == LTC2983_CONV_STATUS_VALID) && ((status & 0xFE) == 0)){
+		int32_t tempRaw = 0;
+		tempRaw |= ((uint32_t)rxBuffer[4]) << 16;
+		tempRaw |= ((uint32_t)rxBuffer[5]) << 8;
+		tempRaw |= ((uint32_t)rxBuffer[6]);
 
-		result->Temperature = (float)temperature / 1024;
+		if (tempRaw & 0x800000) {
+			tempRaw |= 0xFF000000;
+		}
+
+		result->Temperature = (float)tempRaw / 1024.0f;
 		result->Status = LTC2983_ENUM_CONV_STATUS_VALID;
 	}else{
 		if ((status & LTC2983_CONV_STATUS_SENSOR_HARD_FAILURE) == LTC2983_CONV_STATUS_SENSOR_HARD_FAILURE){
@@ -367,6 +370,9 @@ LTC2983DriverStatus_t LTC2983_Init(LTC2983Handle_t * const handle){
 			const GpioChannel_t * const CSpin = &handle->IfaceConfig->GpioChipSelect;
 			HAL_GPIO_WritePin(CSpin->Port, CSpin->Pin, GPIO_PIN_SET);
 
+			const GpioChannel_t * const RSpin = &handle->IfaceConfig->GpioReset;
+			HAL_GPIO_WritePin(RSpin->Port, RSpin->Pin, GPIO_PIN_SET);
+
 
 			state->Status = LTC2983_DRIVER_STATUS_SLEEP;
 			state->Error = LTC2983_DRIVER_ERROR_NONE;
@@ -406,13 +412,13 @@ void LTC2983_RegisterTaskDoneCallback(LTC2983Handle_t * const handle, LTC2983Tas
 	handle->TaskDoneCallback = callback;
 }
 
-void LTC2983_UnRegisterTaskDoneCallback(LTC2983Handle_t * const handle){ //TODO double check
+void LTC2983_UnRegisterTaskDoneCallback(LTC2983Handle_t * const handle){
 	assert(handle != NULL);
 
 	handle->TaskDoneCallback = NULL;
 }
 
-LTC2983DriverStatus_t LTC2983_StartUp(const LTC2983Handle_t * const handle){
+LTC2983DriverStatus_t LTC2983_StartUp(LTC2983Handle_t * const handle){
 	assert(handle != NULL);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
 	assert(handle->State->Initialized != false);
@@ -443,7 +449,7 @@ LTC2983DriverStatus_t LTC2983_StartUp(const LTC2983Handle_t * const handle){
 	return LTC2983_DRIVER_STATUS_NONE;
 }
 
-LTC2983DriverStatus_t LTC2983_Sleep(const LTC2983Handle_t * const handle){
+LTC2983DriverStatus_t LTC2983_Sleep(LTC2983Handle_t * const handle){
 	assert(handle != NULL);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_SLEEP);
 	assert(handle->State->Status != LTC2983_DRIVER_STATUS_BUSY);
@@ -480,6 +486,9 @@ LTC2983DriverStatus_t LTC2983_Sleep(const LTC2983Handle_t * const handle){
 
 	pState->Status = LTC2983_DRIVER_STATUS_BUSY;
 	pState->TaskState = TASK_STATE_SLEEP_TRANSFER;
+
+	pState->StartupDone = false;
+	pState->ChannelsConfigured = false;
 
 	_LTC2983_WriteByte(handle, LTC2983_COMMAND_STATUS_REGISTER, LTC2983_COMMAND_STATUS_SLEEP);
 
@@ -623,7 +632,7 @@ LTC2983DriverStatus_t LTC2983_WriteGlobalConfigReg(LTC2983Handle_t * const handl
 	handle->State->Status = LTC2983_DRIVER_STATUS_BUSY;
 	handle->State->TaskState = TASK_STATE_WRITE_BYTE_TRANSFER;
 
-	LTC2983MuxConfigDelay_t globalConfig = handle->GlobalConfigurationRegister;
+	LTC2983GlobalConfigReg_t globalConfig = handle->GlobalConfigurationRegister;
 	_LTC2983_WriteByte(handle, LTC2983_GLOBAL_CONFIG_REGISTER, globalConfig);
 
 	return LTC2983_DRIVER_STATUS_NONE;
@@ -985,8 +994,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
 			uint8_t response = rxBuffer[3];
 
-			if (response == LTC2983_COMMAND_STATUS_DONE){
+			if ((response | LTC2983_COMMAND_STATUS_DONE) == LTC2983_COMMAND_STATUS_DONE){
 				state->Status = LTC2983_DRIVER_STATUS_NONE;
+				state->StartupDone = true;
 			}
 			else {
 				state->Status = LTC2983_DRIVER_STATUS_SLEEP;
@@ -1000,6 +1010,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 		case TASK_STATE_SLEEP_TRANSFER: {
 			state->TaskState = TASK_STATE_IDLE;
 			state->Status = LTC2983_DRIVER_STATUS_SLEEP;
+			state->StartupDone = false;
 
 			_LTC2983_FireCallback(handle);
 			break;
@@ -1048,9 +1059,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 			uint8_t * const rxBuffer = state->RxBuffer;
 
 			LTC2983MeasMultiChannelsMask_t rxMask = 0;
-			rxMask |= ((uint32_t)rxBuffer[3] << 16);
-			rxMask |= ((uint32_t)rxBuffer[4] << 8);
-			rxMask |= ((uint32_t)rxBuffer[5]);
+			rxMask |= ((uint32_t)rxBuffer[4] << 16);
+			rxMask |= ((uint32_t)rxBuffer[5] << 8);
+			rxMask |= ((uint32_t)rxBuffer[6]);
 
 			handle->BitMask = rxMask;
 
@@ -1074,6 +1085,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 			else{
 				*pIdx = 0;
 
+				state->ChannelsConfigured = true;
 				state->TaskState = TASK_STATE_IDLE;
 				state->Status = LTC2983_DRIVER_STATUS_COMPLETE;
 				state->Error = LTC2983_DRIVER_ERROR_NONE;
@@ -1182,7 +1194,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	}
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
 	assert(globalHandleRegistry != NULL);
 
 	LTC2983Handle_t * const handle = _LTC2983_GetHandleByExtiPin(GPIO_Pin);
@@ -1191,11 +1203,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 		return;
 	}
 
-	const GpioChannel_t * const CSpin = &handle->IfaceConfig->GpioChipSelect;
-	HAL_GPIO_WritePin(CSpin->Port, CSpin->Pin, GPIO_PIN_SET);
 	LTC2983RuntimeState_t * const state = handle->State;
 
 	switch (state->TaskState){
+		case TASK_STATE_CONVERT_TRANSFER:
 		case TASK_STATE_CONVERT_WAIT_HW:{
 			state->TaskState = TASK_STATE_IDLE;
 			state->Status = LTC2983_DRIVER_STATUS_COMPLETE;
