@@ -55,6 +55,8 @@ typedef enum {
 	LTC2983_DRIVER_ERROR_NONE,
     LTC2983_DRIVER_ERROR_DEVICE_SLEEPING,
     LTC2983_DRIVER_ERROR_SPI_BUSY,
+    LTC2983_DRIVER_ERROR_SPI_TIMEOUT,
+    LTC2983_DRIVER_ERROR_SPI_ERROR,
     LTC2983_DRIVER_ERROR_DEVICE_BUSY,
     LTC2983_DRIVER_ERROR_WAIT_HW,
 	LTC2983_DRIVER_ERROR_INVALID_CHANNEL,
@@ -142,6 +144,8 @@ typedef struct{
 	// Temp read temperature result of channel variable
 	volatile uint8_t ReadAllIndex;
 	volatile uint8_t LastChannelRead;
+
+	volatile bool Reset;
 } LTC2983RuntimeState_t;
 
 /** LTC2983 channel configuration */

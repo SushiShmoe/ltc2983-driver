@@ -48,90 +48,9 @@ SPI_HandleTypeDef hspi2;
 DMA_HandleTypeDef handle_GPDMA1_Channel1;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
-UART_HandleTypeDef huart1;
-
 /* USER CODE BEGIN PV */
 
-LTC2983IfaceConfig_t ltc1IFaceConfig = {
-		.hspi = &hspi2,
-		.GpioChipSelect = {.Pin = LTC1_CS_Pin, .Port = LTC1_CS_GPIO_Port},
-		.GpioReset = {.Pin = LTC1_RST_Pin, .Port = LTC1_RST_GPIO_Port},
-		.GpioInterrupt = {.Pin = LTC1_EXTI_Pin, .Port = LTC1_EXTI_GPIO_Port}
-};
-
-const float rsenseResistorValue = 5050.0; // ohms
-LTC2983ChannelConfig_t ltc1ChannelArray[5] = {
-		{ // Rsense resistor
-			.Channel = 	2,
-			.Data = LTC2983_SENSOR_TYPE__SENSE_RESISTOR | (uint32_t)(rsenseResistorValue * 1024) // resolution per bit
-		},
-		{ // rtd1, sensor type and excitation current is an unknown
-			.Channel = 4,
-			.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
-			| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
-		},
-		{
-				.Channel = 6,
-				.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
-				| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
-		},
-		{
-				.Channel = 8,
-				.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
-				| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
-		},
-		{
-				.Channel = 10,
-				.Data = LTC2983_SENSOR_TYPE__RTD_PT_1000 | LTC2983_RTD_RSENSE_CHANNEL__2 | LTC2983_RTD_EXCITATION_MODE__NO_ROTATION_SHARING \
-				| LTC2983_RTD_EXCITATION_CURRENT__100UA | LTC2983_RTD_STANDARD__EUROPEAN
-		}
-};
-
-LTC2983ChannelConfigs_t ltc1ChannelConfigs = {
-		.Configs = ltc1ChannelArray,
-		.Count = sizeof(ltc1ChannelArray) / sizeof(LTC2983ChannelConfig_t)
-};
-
-LTC2983ConvResult_t ltc1ConvResultArray[4] = {
-		{
-				.Channel = 4, .Status = 0, .Temperature = 0
-		},
-		{
-				.Channel = 6, .Status = 0, .Temperature = 0
-		},
-		{
-				.Channel = 8, .Status = 0, .Temperature = 0
-		},
-		{
-				.Channel = 10, .Status = 0, .Temperature = 0
-		}
-};
-
-LTC2983ConvResults_t ltc1ConvResults = {
-		.Results = ltc1ConvResultArray,
-		.Count = sizeof(ltc1ConvResultArray) / sizeof(LTC2983ConvResult_t)
-};
-
-LTC2983RuntimeState_t ltc1State = {0};
-
-LTC2983Handle_t ltc1Handle = {
-		.IfaceConfig = &ltc1IFaceConfig,
-		.ChannelConfigs = &ltc1ChannelConfigs,
-		.Results = &ltc1ConvResults,
-		.State = &ltc1State,
-		.BitMask = 1 << 3 | 1 << 5 | 1 << 7 | 1 << 9, // channel 4, 6, 8, 10
-		.GlobalConfigurationRegister = LTC2983_REJECTION__50_60_HZ | LTC2983_TEMP_UNIT__C,
-		.MuxConfigDelay = 10 // for 1ms delay, dunno why i just decided so
-};
-
-LTC2983Handle_t* handlesArray[1] = { &ltc1Handle };
-
-LTC2983HandleRegistry_t handleRegistry = {
-		.Handles = handlesArray,
-		.Count = 1
-};
-
-
+extern LTC2983HandleRegistry_t handleRegistry;
 
 /* USER CODE END PV */
 
@@ -140,7 +59,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_GPDMA1_Init(void);
 static void MX_SPI2_Init(void);
-static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -181,8 +99,9 @@ int main(void)
   MX_GPIO_Init();
   MX_GPDMA1_Init();
   MX_SPI2_Init();
-  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+
+    LTC2983Handle_t ltc1Handle = *handleRegistry.Handles[0];
 
 	LTC2983_Init(&ltc1Handle);
 
@@ -257,33 +176,27 @@ int main(void)
 	  		  break;
 	  	  }
 	  	  case 8:{
-	  		  LTC2983_Convert(&ltc1Handle, 4);
-
-	  		  step++;
-	  		  break;
-	  	  }
-	  	  case 9:{
-	  		  LTC2983_ReadTemperatureResults(&ltc1Handle, 4);
-
-	  		  step++;
-	  		  break;
-	  	  }
-	  	  case 10:{
 	  		  LTC2983_Convert(&ltc1Handle, 0);
 
 	  		  step++;
 	  		  break;
 	  	  }
-	  	  case 11:{
+	  	  case 9:{
 	  		  LTC2983_ReadTemperatureResults(&ltc1Handle, 0);
 
 	  		  step++;
 	  		  break;
 	  	  }
-	  	  case 12:{
+	  	  case 10:{
+	  		  LTC2983_Sleep(&ltc1Handle);
+
+	  		  step = 0;
+
+	  		  break;
+	  	  }
+	  	  case 11:{
 	  		  LTC2983_ReadTemperatureResults(&ltc1Handle, 0);
 
-	  		  step++;
 	  		  break;
 	  	  }
 	  }
@@ -429,54 +342,6 @@ static void MX_SPI2_Init(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -530,19 +395,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void ltcResultsCallback(LTC2983Handle_t *handle) {
-    if (handle->State->Status == LTC2983_DRIVER_STATUS_COMPLETE) {
-		char msg[64];
-		float t = ltc1Handle.Results->Results[0].Temperature;
-
-		// Arduino-style výpis
-		int len = snprintf(msg, sizeof(msg), "Teplota LTC: %.2f C\r\n", t);
-		HAL_UART_Transmit(&huart1, (uint8_t*)msg, len, 100);
-    }
-}
-
-void ltcDebugCallback(LTC2983Handle_t *handle) {
-}
 
 /* USER CODE END 4 */
 
