@@ -226,6 +226,8 @@ static void _LTC2983_ProcessTempRead(LTC2983Handle_t * const handle, LTC2983Runt
 
 	uint8_t status = rxBuffer[3];
 
+	result->Status = status;
+
 	if (((status & LTC2983_CONV_STATUS_VALID) == LTC2983_CONV_STATUS_VALID) && ((status & 0xFE) == 0)){
 		int32_t tempRaw = 0;
 		tempRaw |= ((uint32_t)rxBuffer[4]) << 16;
@@ -237,25 +239,6 @@ static void _LTC2983_ProcessTempRead(LTC2983Handle_t * const handle, LTC2983Runt
 		}
 
 		result->Temperature = (float)tempRaw / 1024.0f;
-		result->Status = LTC2983_ENUM_CONV_STATUS_VALID;
-	}else{
-		if ((status & LTC2983_CONV_STATUS_SENSOR_HARD_FAILURE) == LTC2983_CONV_STATUS_SENSOR_HARD_FAILURE){
-			result->Status = LTC2983_ENUM_CONV_STATUS_SENSOR_HARD_FAILURE;
-		} else if ((status & LTC2983_CONV_STATUS_ADC_HARD_FAILURE) == LTC2983_CONV_STATUS_ADC_HARD_FAILURE){
-			result->Status = LTC2983_ENUM_CONV_STATUS_ADC_HARD_FAILURE;
-		} else if ((status & LTC2983_CONV_STATUS_CJ_HARD_FAILURE) == LTC2983_CONV_STATUS_CJ_HARD_FAILURE){
-			result->Status = LTC2983_ENUM_CONV_STATUS_CJ_HARD_FAILURE;
-		} else if ((status & LTC2983_CONV_STATUS_CJ_SOFT_FAILURE) == LTC2983_CONV_STATUS_CJ_SOFT_FAILURE){
-			result->Status = LTC2983_ENUM_CONV_STATUS_CJ_SOFT_FAILURE;
-		} else if ((status & LTC2983_CONV_STATUS_SENSOR_ABOVE) == LTC2983_CONV_STATUS_SENSOR_ABOVE){
-			result->Status = LTC2983_ENUM_CONV_STATUS_SENSOR_ABOVE;
-		} else if ((status & LTC2983_CONV_STATUS_SENSOR_BELOW) == LTC2983_CONV_STATUS_SENSOR_BELOW){
-			result->Status = LTC2983_ENUM_CONV_STATUS_SENSOR_BELOW;
-		} else if ((status & LTC2983_CONV_STATUS_ADC_RANGE_ERROR) == LTC2983_CONV_STATUS_ADC_RANGE_ERROR){
-			result->Status = LTC2983_ENUM_CONV_STATUS_ADC_RANGE_ERROR;
-		}else if ((status & LTC2983_CONV_STATUS_INVALID) == LTC2983_CONV_STATUS_INVALID){
-			result->Status = LTC2983_ENUM_CONV_STATUS_INVALID;
-		}
 	}
 
 	return;
@@ -1590,7 +1573,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 				break;
 			}
 
-			LTC2983ConvResult_t * const result = _LTC2983_FindConvResult(handle->Results, lastChannel);
+			LTC2983ConvResult_t * const result = &handle->Results->Results[lastChannel-1];//_LTC2983_FindConvResult(handle->Results, lastChannel);
 
 			if (!result){
 				state->TaskState = TASK_STATE_IDLE;
@@ -1614,7 +1597,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 				break;
 			}
 
-			LTC2983ConvResult_t * const result = _LTC2983_FindConvResult(handle->Results, lastChannel);
+			LTC2983ConvResult_t * const result = &handle->Results->Results[lastChannel-1];//_LTC2983_FindConvResult(handle->Results, lastChannel);
 
 			if (!result){
 				state->TaskState = TASK_STATE_IDLE;

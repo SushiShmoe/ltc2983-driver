@@ -166,7 +166,8 @@ typedef struct {
 /** LTC2983 conversion result */
 typedef struct {
     LTC2983Channel_t Channel; // input param
-    volatile LTC2983EnumConvStatus_t Status; // output param
+    //volatile LTC2983EnumConvStatus_t Status; // output param
+    volatile uint8_t Status;
     volatile LTC2983Temperature_t Temperature; // output param
     volatile uint32_t Raw;
 } LTC2983ConvResult_t;
