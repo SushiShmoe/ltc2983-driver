@@ -38,6 +38,9 @@ typedef enum{
 	// Read Temperature Results
 	TASK_STATE_TEMP_READ_RESULTS_TRANSFER,
 	TASK_STATE_TEMP_READ_ALL_RESULTS_TRANSFER,
+
+	// Debug
+	TASK_STATE_READ_RAW_VOLTAGE_TRANSFER,
 } LTC2983TaskState_t;
 
 
@@ -165,6 +168,7 @@ typedef struct {
     LTC2983Channel_t Channel; // input param
     volatile LTC2983EnumConvStatus_t Status; // output param
     volatile LTC2983Temperature_t Temperature; // output param
+    volatile uint32_t Raw;
 } LTC2983ConvResult_t;
 
 /** LTC2983 conversion results */
@@ -516,6 +520,8 @@ LTC2983DriverStatus_t LTC2983_ReadMeasMultiChannelsMask(LTC2983Handle_t * const 
 LTC2983DriverStatus_t LTC2983_Convert(LTC2983Handle_t * const handle, const LTC2983Channel_t channel);
 /** Read LTC2983 Temperature Result. Driver must not be busy. 0 for multimask channels. The temp results will be in the handle->results. */
 LTC2983DriverStatus_t LTC2983_ReadTemperatureResults(LTC2983Handle_t * const handle, const LTC2983Channel_t channel);
+
+LTC2983DriverStatus_t LTC2983_ReadRawVoltage(LTC2983Handle_t * const handle, const LTC2983Channel_t channel);
 
 #ifdef	__cplusplus
 }
